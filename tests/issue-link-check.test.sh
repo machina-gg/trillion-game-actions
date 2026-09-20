@@ -21,7 +21,7 @@ source "${TEST_DIR}/lib/assert.sh"
 ACTION_DIR="${REPO_ROOT}/.github/actions/issue-link-check"
 SCRIPT="${ACTION_DIR}/check.sh"
 
-echo "== agent-review (issue-link-check/check.sh) =="
+echo "== trillion-game-actions (issue-link-check/check.sh) =="
 
 # ------------------------------------------------------------------
 # 実行ヘルパー

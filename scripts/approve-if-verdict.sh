@@ -1,5 +1,5 @@
 #!/bin/bash
-# agent-review — レビューの判定行を読んで Approve を押すスクリプト
+# trillion-game-actions — レビューの判定行を読んで Approve を押すスクリプト
 #
 # reusable workflow（.github/workflows/review.yml）の最終ステップから、呼び出し元リポジトリの
 # ワークスペースに checkout された `.agent-review/scripts/approve-if-verdict.sh` として呼ばれる。

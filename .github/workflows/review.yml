@@ -8,6 +8,8 @@ name: Agent Review
 # 正式な Approve を出せない（GitHub は PR 作成者自身の Approve を受け付けない）。GITHUB_TOKEN の
 # Approve はブランチルールセットの必須 Approve に数えられるため、別身元の Approve をここで作る。
 #
+# ⚠ ワークスペース内の `.agent-review/` は checkout 先のパス名で、リポジトリ名とは独立（歴史的な名前）。
+#
 # ⚠ 2 段構え。Claude は `gh pr comment` で講評を投稿するだけで Approve は押せない
 #   （`gh api` / `gh pr review` / inline コメント MCP を許可しない）。Approve を押すのは
 #   .agent-review/scripts/approve-if-verdict.sh で、判定行の形式・投稿者・時刻・head SHA を
@@ -60,11 +62,11 @@ jobs:
 
       # 観点と Approve スクリプトの実体。public リポジトリなので token を渡さずに取れる。
       # ⚠ ref は main 固定。呼び出し元の PR が観点や Approve スクリプトを差し替える経路を作らない
-      #   （agent-review 自身の PR をレビューするときも、観点は main のものが使われる）。
-      - name: Checkout agent-review
+      #   （trillion-game-actions 自身の PR をレビューするときも、観点は main のものが使われる）。
+      - name: Checkout trillion-game-actions
         uses: actions/checkout@v7
         with:
-          repository: machina-gg/agent-review
+          repository: machina-gg/trillion-game-actions
           ref: main
           path: .agent-review
           # public リポジトリの読み取り専用 checkout で以後の git 操作も無いため、
@@ -87,7 +89,7 @@ jobs:
               continue
             fi
             if [[ ! "$NAME" =~ ^[A-Za-z0-9_-]+$ ]]; then
-              echo "::error title=Agent Review::profile の値が不正です。使えるのは英数字・ハイフン・アンダースコアと、区切りのカンマだけです（利用できるプロファイルの一覧は machina-gg/agent-review の README.md）"
+              echo "::error title=Agent Review::profile の値が不正です。使えるのは英数字・ハイフン・アンダースコアと、区切りのカンマだけです（利用できるプロファイルの一覧は machina-gg/trillion-game-actions の README.md）"
               exit 1
             fi
             PROMPT_LIST="${PROMPT_LIST:+${PROMPT_LIST}, }.agent-review/perspectives/${NAME}.md"

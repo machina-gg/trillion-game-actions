@@ -1,4 +1,4 @@
-# agent-review
+# trillion-game-actions
 
 **複数のリポジトリで共有する CI 資産**を置くリポジトリ。実体はここ 1 箇所にあり、
 呼び出し元は `@main` 参照で使う（コピーしない）。
@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   review:
-    uses: machina-gg/agent-review/.github/workflows/review.yml@main
+    uses: machina-gg/trillion-game-actions/.github/workflows/review.yml@main
     permissions:
       contents: read
       pull-requests: write
@@ -150,7 +150,7 @@ composite action。どれも無く、override ラベルも付いていなけれ�
 
 ```yaml
 - name: Issue Check
-  uses: machina-gg/agent-review/.github/actions/issue-link-check@main
+  uses: machina-gg/trillion-game-actions/.github/actions/issue-link-check@main
   with:
     pr-body: ${{ github.event.pull_request.body }}
     labels-json: ${{ toJSON(github.event.pull_request.labels.*.name) }}
