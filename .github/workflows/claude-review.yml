@@ -1,6 +1,6 @@
 name: Claude Review
 
-# agent-review 自身の PR を、このリポジトリが提供する reusable workflow でレビューする。
+# trillion-game-actions 自身の PR を、このリポジトリが提供する reusable workflow でレビューする。
 # ⚠ ローカル参照（./.github/workflows/review.yml）なので、走るのは PR 側の review.yml の定義。
 #   一方で観点と Approve スクリプト（.agent-review/）は review.yml が main から checkout するため、
 #   PR で観点を書き換えても、その PR 自身のレビューには反映されない（自己 Approve 対策）。

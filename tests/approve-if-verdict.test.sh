@@ -26,7 +26,7 @@ source "${TEST_DIR}/lib/assert.sh"
 
 SCRIPT="${REPO_ROOT}/scripts/approve-if-verdict.sh"
 
-echo "== agent-review (approve-if-verdict.sh) =="
+echo "== trillion-game-actions (approve-if-verdict.sh) =="
 
 # ------------------------------------------------------------------
 # 一時環境の構築

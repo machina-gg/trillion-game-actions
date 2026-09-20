@@ -1,4 +1,4 @@
-# agent-review — このリポジトリの規約
+# trillion-game-actions — このリポジトリの規約
 
 複数のリポジトリで共有する **CI 資産**（レビュー観点・Approve を押す reusable workflow・呼び出し元の CI に差し込む composite action）を置くリポジトリ。
 呼び方・プロファイル一覧・判定行の契約は [`README.md`](README.md) が SSOT。

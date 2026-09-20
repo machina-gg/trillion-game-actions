@@ -1,5 +1,5 @@
 #!/bin/bash
-# agent-review — PR 本文の Issue 紐づけ検査（composite action `issue-link-check` の判定の実体）
+# trillion-game-actions — PR 本文の Issue 紐づけ検査（composite action `issue-link-check` の判定の実体）
 #
 # 同ディレクトリの action.yml の唯一のステップから呼ばれる。入力はすべて環境変数で受け取り、
 # GitHub の式（contains 等）には依存しない（同じ入力なら同じ出力になる決定的処理に閉じ、
