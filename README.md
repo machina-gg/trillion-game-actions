@@ -213,5 +213,5 @@ for t in tests/*.test.sh; do bash "$t" || break; done
 npx prettier@3 --check .
 ```
 
-⚠ **CI（`ci.yml`）の回帰テストのステップは `tests/approve-if-verdict.test.sh` だけを名指しで実行する。**
-上の `for` は `tests/` のテストをすべて走らせるので、**手元の方が広く検査する**。
+⚠ **CI（`ci.yml`）の回帰テストのステップも `tests/*.test.sh` を全件実行する**ので、対象は手元と同じ。
+ただし上の `for` は 1 本目の失敗で止まる（`break`）のに対し、**CI は落ちても最後まで走らせてから失敗させる**。
