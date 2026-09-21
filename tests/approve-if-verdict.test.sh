@@ -10,6 +10,8 @@
 #      これが崩れると「自分で書いた判定行で自分の PR を Approve できる」経路が開く）
 #   2. 判定行の形式は行頭固定・装飾なし・引用 / コードブロックの外・1 コメント 1 本
 #      （perspectives/common.md「レビュー結果の定型フォーマット」）。外れた形は判定として読まない
+#   2'. 見出しは行頭 `## レビュー` で始まること。⚠ **括弧の中身は問わない**（`## レビュー(claude)` でも読む。
+#      machina-gg/trillion-game-actions#1）が、行頭でない形・コードブロックの中は見出しとして読まない
 #   3. since より古いコメント / head SHA 不一致では Approve しない
 #   4. Approve しない経路は exit 0（job を失敗させない）。API 失敗・解釈不能は exit 1 + UNDETERMINED（fail-close）
 #   5. ⚠ **標準出力の判定ラベルが正式な判定**。ラベル文字列（APPROVED / SKIPPED_NO_VERDICT /
@@ -161,6 +163,24 @@ BODY_INDENTED="${BODY_APPROVE//判定: APPROVE/  判定: APPROVE}"
 BODY_FULLWIDTH_COLON="${BODY_APPROVE//判定: APPROVE/判定： APPROVE}"
 # 見出しが無い（定型ではない投稿）
 BODY_NO_HEADER="${BODY_APPROVE//## レビュー(reviewer)/## 講評}"
+# 見出しの括弧の中身が揺れた（Reviewer が役割名ではなく自分の名前を書いた形。Issue #1）
+BODY_HEADER_CLAUDE="${BODY_APPROVE//## レビュー(reviewer)/## レビュー(claude)}"
+# 見出しが引用の中にある（行頭ではないので見出しとして読まない）
+BODY_HEADER_QUOTED="${BODY_APPROVE//## レビュー(reviewer)/> ## レビュー(reviewer)}"
+# 見出しがコードブロックの中にしかない（定型の説明を引用しただけの投稿）
+BODY_HEADER_IN_CODE_BLOCK="$(
+  cat <<'EOF'
+定型は次のとおり:
+```
+## レビュー(reviewer)
+```
+判定: APPROVE
+EOF
+)"
+# 見出しの字下げ（Markdown の見出しとして許容される 3 スペースまで / 4 スペースはコードブロック）。
+# ⚠ 上下 2 本で境界を挟む。許容側だけだと `^ {0,3}` を広げる変異（{0,6} 等）が素通りする
+BODY_HEADER_INDENT3="${BODY_APPROVE//## レビュー(reviewer)/   ## レビュー(reviewer)}"
+BODY_HEADER_INDENT4="${BODY_APPROVE//## レビュー(reviewer)/    ## レビュー(reviewer)}"
 # 定型のテンプレートをそのまま写した値（APPROVE でも REQUEST_CHANGES でもない）
 BODY_TEMPLATE_VALUE="${BODY_APPROVE//判定: APPROVE/判定: APPROVE / REQUEST_CHANGES}"
 # 判定行が 2 本（過去の判定の再掲）
@@ -249,6 +269,11 @@ C_BOT_TRACKING="$(make_comment 18 "$BOT" "$T_AFTER" "$BODY_TRACKING")"
 C_BOT_APPROVE_AT_SINCE="$(make_comment 19 "$BOT" "$SINCE" "$BODY_APPROVE")"
 C_BOT_REQUEST_LATE="$(make_comment 20 "$BOT" "$T_AFTER_LATE" "$BODY_REQUEST_CHANGES")"
 C_BOT_APPROVE_LATE="$(make_comment 21 "$BOT" "$T_AFTER_LATE" "$BODY_APPROVE")"
+C_BOT_HEADER_CLAUDE="$(make_comment 22 "$BOT" "$T_AFTER" "$BODY_HEADER_CLAUDE")"
+C_BOT_HEADER_QUOTED="$(make_comment 23 "$BOT" "$T_AFTER" "$BODY_HEADER_QUOTED")"
+C_BOT_HEADER_IN_CODE="$(make_comment 24 "$BOT" "$T_AFTER" "$BODY_HEADER_IN_CODE_BLOCK")"
+C_BOT_HEADER_INDENT3="$(make_comment 25 "$BOT" "$T_AFTER" "$BODY_HEADER_INDENT3")"
+C_BOT_HEADER_INDENT4="$(make_comment 26 "$BOT" "$T_AFTER" "$BODY_HEADER_INDENT4")"
 
 # --- 正常系 ---
 make_fixture approve "$HEAD_SHA" "$C_BOT_APPROVE"
@@ -260,6 +285,9 @@ make_fixture approve_at_since "$HEAD_SHA" "$C_BOT_APPROVE_AT_SINCE"
 make_fixture crlf "$HEAD_SHA" "$C_BOT_CRLF"
 make_fixture trailing_space "$HEAD_SHA" "$C_BOT_TRAILING"
 make_fixture code_block_and_real "$HEAD_SHA" "$C_BOT_CODE_AND_REAL"
+# 見出しの括弧の中身が揺れても候補になる（Issue #1 の再発防止）
+make_fixture header_claude "$HEAD_SHA" "$C_BOT_HEADER_CLAUDE"
+make_fixture header_indent3 "$HEAD_SHA" "$C_BOT_HEADER_INDENT3"
 # 複数候補は created_at が最大の 1 件（古い APPROVE + 新しい REQUEST_CHANGES → 何もしない / 逆 → Approve）
 make_fixture approve_then_request "$HEAD_SHA" "${C_BOT_APPROVE}
 ${C_BOT_REQUEST_LATE}"
@@ -278,6 +306,9 @@ make_fixture quoted "$HEAD_SHA" "$C_BOT_QUOTED"
 make_fixture indented "$HEAD_SHA" "$C_BOT_INDENTED"
 make_fixture fullwidth_colon "$HEAD_SHA" "$C_BOT_FULLWIDTH"
 make_fixture no_header "$HEAD_SHA" "$C_BOT_NO_HEADER"
+make_fixture header_quoted "$HEAD_SHA" "$C_BOT_HEADER_QUOTED"
+make_fixture header_in_code_block "$HEAD_SHA" "$C_BOT_HEADER_IN_CODE"
+make_fixture header_indent4 "$HEAD_SHA" "$C_BOT_HEADER_INDENT4"
 make_fixture template_value "$HEAD_SHA" "$C_BOT_TEMPLATE_VALUE"
 make_fixture two_verdicts "$HEAD_SHA" "$C_BOT_TWO_VERDICTS"
 make_fixture code_block_only "$HEAD_SHA" "$C_BOT_CODE_ONLY"
@@ -396,6 +427,16 @@ assert_equals "$STATUS" "0" "--paginate の 2 ページ目にある判定行も�
 assert_label APPROVED "2 ページ目"
 assert_post_count paginated 1 "2 ページ目の判定で reviews API が呼ばれる"
 
+run_approve header_claude 1110 "$SINCE" "$HEAD_SHA"
+assert_equals "$STATUS" "0" "見出しの括弧の中身が違っても（## レビュー(claude)）判定を読む（Issue #1）"
+assert_label APPROVED "見出しの括弧の揺れ"
+assert_post_count header_claude 1 "括弧の中身が違っても reviews API は 1 回呼ばれる"
+
+run_approve header_indent3 1110 "$SINCE" "$HEAD_SHA"
+assert_equals "$STATUS" "0" "見出しの字下げ 3 スペースまでは Markdown の見出しとして読む"
+assert_label APPROVED "見出しの字下げ 3 スペース"
+assert_post_count header_indent3 1 "字下げ 3 スペースでは reviews API が 1 回呼ばれる"
+
 run_approve code_block_and_real 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "0" "コードブロック内の判定行は数えず、外の 1 本（REQUEST_CHANGES）で判定する"
 assert_label SKIPPED_REQUEST_CHANGES "コードブロック内 APPROVE + 外 REQUEST_CHANGES"
@@ -458,9 +499,26 @@ assert_label SKIPPED_NO_VERDICT "全角コロン"
 assert_post_count fullwidth_colon 0 "全角コロンでは reviews API を呼ばない"
 
 run_approve no_header 1110 "$SINCE" "$HEAD_SHA"
-assert_equals "$STATUS" "0" "見出し（## レビュー(reviewer)）が無い投稿は読まない"
+assert_equals "$STATUS" "0" "見出し（行頭 ## レビュー）が無い投稿は読まない"
 assert_label SKIPPED_NO_VERDICT "見出し無し"
 assert_post_count no_header 0 "見出し無しでは reviews API を呼ばない"
+
+run_approve header_quoted 1110 "$SINCE" "$HEAD_SHA"
+assert_equals "$STATUS" "0" "見出しが行頭でない（> ## レビュー(reviewer)）投稿は読まない"
+assert_label SKIPPED_NO_VERDICT "見出しが引用の中"
+assert_post_count header_quoted 0 "行頭でない見出しでは reviews API を呼ばない"
+
+run_approve header_in_code_block 1110 "$SINCE" "$HEAD_SHA"
+assert_equals "$STATUS" "0" "見出しがコードブロックの中にしかない投稿は読まない"
+assert_label SKIPPED_NO_VERDICT "見出しがコードブロック内"
+assert_post_count header_in_code_block 0 "コードブロック内の見出しでは reviews API を呼ばない"
+
+# ⚠ 上の header_indent3（許容側）と対で字下げの境界を挟む。片側だけだと `^ {0,3}` を
+#   広げる変異（{0,6} 等）が素通りする
+run_approve header_indent4 1110 "$SINCE" "$HEAD_SHA"
+assert_equals "$STATUS" "0" "見出しの字下げ 4 スペースは読まない（Markdown ではコードブロック）"
+assert_label SKIPPED_NO_VERDICT "見出しの字下げ 4 スペース"
+assert_post_count header_indent4 0 "字下げ 4 スペースでは reviews API を呼ばない"
 
 run_approve template_value 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "0" "テンプレートをそのまま写した値（APPROVE / REQUEST_CHANGES）は判定として読まない"
