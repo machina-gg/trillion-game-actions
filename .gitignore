@@ -3,3 +3,10 @@
 
 # 依存パッケージ
 node_modules/
+
+# OS
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/tmp/
