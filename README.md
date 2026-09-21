@@ -81,7 +81,8 @@ jobs:
 
 さらにリポジトリ設定の **Actions → General → Workflow permissions** で
 「Allow GitHub Actions to create and approve pull requests」が有効である必要がある
-（無効だと Approve の POST が `Resource not accessible by integration` で失敗する）。
+（無効だと Approve の POST が失敗し、run は approve-if-verdict.sh の UNDETERMINED で赤くなる。
+実測した症状は `HTTP 422 Unprocessable Entity`）。
 
 ### secret の用意
 
