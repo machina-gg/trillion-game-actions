@@ -22,7 +22,8 @@
 #        - 投稿者が github-actions[bot]（⚠ 同一アカウントの PM / Reviewer subagent が同じ形式を
 #          投稿しても効かない。これがこの仕組みの要）
 #        - created_at が since 以上（job 開始前の古い投稿を読まない）
-#        - 本文に `## レビュー(reviewer)` を含む
+#        - コードブロックの外に、行頭が `## レビュー` で始まる見出し行が**1 本以上**ある
+#          （⚠ 括弧の中身は問わない。Markdown の見出しに合わせ先頭 3 スペースまでは許容する）
 #        - コードブロックの外に、行頭 `判定: ` で始まる行が**ちょうど 1 本**ある
 #      候補が複数あれば created_at が最大の 1 件を採る
 #   3. 候補が無ければ SKIPPED_NO_VERDICT（何もしない・exit 0）
@@ -84,8 +85,12 @@ fi
 # 上書きを許すと「誰の判定行を承認とみなすか」を差し替えられるため。
 REVIEWER_LOGIN='github-actions[bot]'
 
-# レビュー本文の見出し（perspectives/common.md「レビュー結果の定型フォーマット」）
-REVIEW_HEADER='## レビュー(reviewer)'
+# レビュー本文の見出しの接頭辞（perspectives/common.md「レビュー結果の定型フォーマット」の
+# `## レビュー(reviewer)`）。⚠ 括弧の中身は照合しない——Reviewer が括弧内を書き換えた
+# （`## レビュー(claude)`）だけで Approve が落ちるため（machina-gg/trillion-game-actions#1）。
+# ⚠ 見出しが担うのは「無関係な bot コメントを拾わない」ことだけで、身元の担保は
+# REVIEWER_LOGIN / since / head SHA / 判定行ちょうど 1 本が行う（そちらは一切緩めない）。
+REVIEW_HEADER_PREFIX='## レビュー'
 
 # gh の呼び出しが失敗したときの再試行回数と間隔（秒）。瞬断で UNDETERMINED に落ちないための緩衝。
 GH_RETRIES="${TG_AGENT_REVIEW_GH_RETRIES:-2}"
@@ -200,27 +205,32 @@ if ! jq -e 'type == "array"' > /dev/null 2>&1 <<< "$COMMENTS_JSON"; then
   verdict 1 UNDETERMINED "コメント一覧を配列として解釈できなかった（エラー応答の可能性）"
 fi
 
-# 判定行の抽出。
+# 見出しと判定行の抽出。⚠ どちらも同じ「コードブロックの外の行」（content_lines）の上で判定する
+#   （見出しだけ本文全体を対象にすると、フォーマットの説明を引用しただけの投稿が候補になる）。
 #   - CRLF を LF に揃えてから行に分ける
-#   - ``` / ~~~ のフェンスの中は読まない（コードブロック内の判定行は判定ではない）
-#   - 行頭が `判定: ` で始まる行だけを採る（`**判定:` / `> 判定:` / `- 判定:` は行頭が違うので落ちる）
+#   - ``` / ~~~ のフェンスの中は読まない（コードブロック内の見出し・判定行は判定ではない）
+#   - 見出しは行頭が `## レビュー` で始まる行（先頭 3 スペースまでは Markdown の見出しとして許容。
+#     4 つ以上はコードブロックなので落ちる）。⚠ 括弧の中身は照合しない（REVIEW_HEADER_PREFIX の注記）
+#   - 判定行は行頭が `判定: ` で始まる行だけを採る（`**判定:` / `> 判定:` / `- 判定:` は行頭が違うので落ちる）
 #   - 末尾の空白だけは落として値を比べる
 #   - body が null のコメントは空文字として扱う（見出しを含まないので候補にならない）
 # ⚠ jq の失敗（応答の形が想定外で式が評価できない）は「候補なし」へ倒さず UNDETERMINED にする。
 #   握りつぶすと解釈不能が SKIPPED_NO_VERDICT（正常な「何もしない」）と同じ顔になる（PR #1111 の Copilot 指摘）。
-if ! CANDIDATE_JSON=$(jq -c --arg login "$REVIEWER_LOGIN" --arg since "$SINCE" --arg header "$REVIEW_HEADER" '
-  def verdict_lines:
+if ! CANDIDATE_JSON=$(jq -c --arg login "$REVIEWER_LOGIN" --arg since "$SINCE" --arg header "$REVIEW_HEADER_PREFIX" '
+  def content_lines:
     gsub("\r"; "") | split("\n")
     | reduce .[] as $l ({fence: false, out: []};
         if ($l | test("^ {0,3}(```|~~~)")) then .fence = (.fence | not)
-        elif (.fence | not) and ($l | startswith("判定: ")) then .out += [($l | sub("\\s+$"; ""))]
+        elif (.fence | not) then .out += [$l]
         else . end)
     | .out;
   map(select(
         (.user.login? // "") == $login
-        and ((.created_at? // "") >= $since)
-        and ((.body? // "") | contains($header))))
-  | map({id: .id, html_url: .html_url, created_at: .created_at, verdicts: ((.body // "") | verdict_lines)})
+        and ((.created_at? // "") >= $since)))
+  | map(. + {lines: ((.body // "") | content_lines)})
+  | map(select(any(.lines[]; sub("^ {0,3}"; "") | startswith($header))))
+  | map({id: .id, html_url: .html_url, created_at: .created_at,
+         verdicts: [.lines[] | select(startswith("判定: ")) | sub("\\s+$"; "")]})
   | map(select((.verdicts | length) == 1))
   | sort_by(.created_at)
   | last // empty' <<< "$COMMENTS_JSON" 2> "$GH_ERR_FILE"); then
@@ -229,7 +239,7 @@ if ! CANDIDATE_JSON=$(jq -c --arg login "$REVIEWER_LOGIN" --arg since "$SINCE" -
 fi
 
 if [[ -z "$CANDIDATE_JSON" ]]; then
-  echo "  判定行を持つ ${REVIEWER_LOGIN} のレビューコメント（since 以降・${REVIEW_HEADER}・判定行 1 本）が無い"
+  echo "  判定行を持つ ${REVIEWER_LOGIN} のレビューコメント（since 以降・行頭 ${REVIEW_HEADER_PREFIX} の見出し・判定行 1 本）が無い"
   verdict 0 SKIPPED_NO_VERDICT "判定行が無いので何もしない（Approve は付かない）"
 fi
 
