@@ -2,7 +2,7 @@
 # trillion-game-actions — レビューの判定行を読んで Approve を押すスクリプト
 #
 # reusable workflow（.github/workflows/review.yml）の最終ステップから、呼び出し元リポジトリの
-# ワークスペースに checkout された `.agent-review/scripts/approve-if-verdict.sh` として呼ばれる。
+# ワークスペースに checkout された `.trillion-game-actions/scripts/approve-if-verdict.sh` として呼ばれる。
 # GitHub Actions 上の Claude が `gh pr comment` で投稿したレビュー
 # （perspectives/common.md「レビュー結果の定型フォーマット」）から行頭固定の `判定: APPROVE` を探し、
 # 見つかったときだけ GITHUB_TOKEN で `POST /repos/<repo>/pulls/<N>/reviews {event: APPROVE}` を実行する。
@@ -152,11 +152,11 @@ done
 # gh 呼び出し（一過性の失敗を再試行で吸収する）
 # ------------------------------------------------------------------
 
-if ! GH_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/agent-review-gh-err.XXXXXX"); then
+if ! GH_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/trillion-game-actions-gh-err.XXXXXX"); then
   GH_ERR_FILE=""
   verdict 1 UNDETERMINED "一時ファイルを作成できなかった"
 fi
-if ! REVIEW_INPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/agent-review-input.XXXXXX"); then
+if ! REVIEW_INPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/trillion-game-actions-input.XXXXXX"); then
   REVIEW_INPUT_FILE=""
   verdict 1 UNDETERMINED "一時ファイルを作成できなかった"
 fi

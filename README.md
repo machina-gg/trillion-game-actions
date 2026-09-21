@@ -118,13 +118,13 @@ repository secret に登録する（リポジトリ管理者の作業）。
 ⚠ **同じ形式を人間や他の bot が投稿しても Approve は付かない**（投稿者を `github-actions[bot]` に固定しているため）。
 これがこの仕組みの要で、回帰テスト（`tests/approve-if-verdict.test.sh`）が固定している。
 
-## `.agent-review/` の改竄検査
+## `.trillion-game-actions/` の改竄検査
 
-`review.yml` は、このリポジトリの `main` を呼び出し元のワークスペースの `.agent-review/` に checkout してから
+`review.yml` は、このリポジトリの `main` を呼び出し元のワークスペースの `.trillion-game-actions/` に checkout してから
 Claude を走らせる。Claude には `Write` を許しているため、Approve を押す前に
 
 ```
-git -C .agent-review status --porcelain --untracked-files=all
+git -C .trillion-game-actions status --porcelain --untracked-files=all
 ```
 
 で**追跡ファイルの変更と未追跡ファイルの追加を検査し**、出力があれば Approve を押さずに run を失敗させる（fail-close）。
