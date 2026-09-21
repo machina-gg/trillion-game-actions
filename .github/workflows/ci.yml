@@ -35,9 +35,21 @@ jobs:
           echo "=== shellcheck OK ==="
 
       # gh をスタブに差し替えて走る（ネットワーク・トークン不要）。
+      # ⚠ 対象はファイルの列挙ではなくパターンで決める（テストが増えても追随が要らない）。
       - name: Script Check (regression tests)
         if: ${{ !cancelled() }}
-        run: bash tests/approve-if-verdict.test.sh
+        run: |
+          mapfile -t TESTS < <(git ls-files 'tests/*.test.sh')
+          if [ "${#TESTS[@]}" -eq 0 ]; then
+            echo "::error title=Script Check::tests/*.test.sh が 1 件も見つかりません"
+            exit 1
+          fi
+          FAILED=0
+          for t in "${TESTS[@]}"; do
+            echo "=== $t ==="
+            bash "$t" || FAILED=1
+          done
+          [ "$FAILED" -eq 0 ] || exit 1
 
       - name: Format Check
         if: ${{ !cancelled() }}
