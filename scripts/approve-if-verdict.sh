@@ -216,6 +216,8 @@ fi
 #   - body が null のコメントは空文字として扱う（見出しを含まないので候補にならない）
 # ⚠ jq の失敗（応答の形が想定外で式が評価できない）は「候補なし」へ倒さず UNDETERMINED にする。
 #   握りつぶすと解釈不能が SKIPPED_NO_VERDICT（正常な「何もしない」）と同じ顔になる（PR #1111 の Copilot 指摘）。
+# ⚠ 本スクリプトを呼ぶ運営リポジトリ側に、同じ抽出条件の写しがある。
+#   片方だけ変えない（変えるときは両方を同じ条件に揃える）。
 if ! CANDIDATE_JSON=$(jq -c --arg login "$REVIEWER_LOGIN" --arg since "$SINCE" --arg header "$REVIEW_HEADER_PREFIX" '
   def content_lines:
     gsub("\r"; "") | split("\n")
