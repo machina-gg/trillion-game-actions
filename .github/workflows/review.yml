@@ -8,19 +8,21 @@ name: Agent Review
 # 正式な Approve を出せない（GitHub は PR 作成者自身の Approve を受け付けない）。GITHUB_TOKEN の
 # Approve はブランチルールセットの必須 Approve に数えられるため、別身元の Approve をここで作る。
 #
-# 呼び出し元のワークスペース内の `.trillion-game-actions/` は、このリポジトリを checkout する先
-# （パス名はリポジトリ名に合わせてある）。
+# 呼び出し元のワークスペース内には、このリポジトリを checkout する先のディレクトリを作る
+# （パス名はリポジトリ名に合わせてある）。⚠ そのパス名の定義は job の env の ACTIONS_DIR 1 箇所だけで、
+# 各用途（checkout / プロンプト / 改竄検査 / スクリプト呼び出し）はすべてそこを参照する
+# （一部だけずれても run が緑のまま Approve だけが壊れるため。tests/review-workflow.test.sh が固定する）。
 #
 # ⚠ 2 段構え。Claude は `gh pr comment` で講評を投稿するだけで Approve は押せない
 #   （`gh api` / `gh pr review` / inline コメント MCP を許可しない）。Approve を押すのは
-#   .trillion-game-actions/scripts/approve-if-verdict.sh で、判定行の形式・投稿者・時刻・head SHA を
+#   ACTIONS_DIR が指す先の scripts/approve-if-verdict.sh で、判定行の形式・投稿者・時刻・head SHA を
 #   機械で検査してから実行する（判定順はスクリプト冒頭のコメント）。
 # ⚠ Approve しない経路（REQUEST_CHANGES / 判定行なし / head が動いた / secret 未設定 /
 #   claude-code-action 自体の失敗）でも job は成功で終える。job を失敗させると、Approve が
 #   付かないことに加えて「CI が赤い」という別の理由でも PR が止まり、原因が二重になる。
 #   Approve が付かなければ呼び出し元のルールセットが止める。
-#   ⚠ 唯一 job を失敗させるのは (a) profile の値が不正、(b) .trillion-game-actions/ の改変検出、
-#   (c) approve-if-verdict.sh の UNDETERMINED（API 失敗・解釈不能）の 3 つで、
+#   ⚠ 唯一 job を失敗させるのは (a) profile の値が不正、(b) 観点ファイル common.md の不在、
+#   (c) ACTIONS_DIR が指す先の改変検出、(d) approve-if-verdict.sh の UNDETERMINED（API 失敗・解釈不能）で、
 #   いずれも「Approve を押せない異常」を run の失敗で見せるためのもの（fail-close）。
 # ⚠ 呼び出し元の PR が自分の workflow 定義を変えて自己 Approve できる構造は塞いでいない
 #   （pull_request は PR 側の定義を実行するため）。`.yml` を人間マージにする運用で守る。
@@ -46,6 +48,11 @@ jobs:
     # ⚠ 呼び出し元は `on: pull_request` であることが前提（README.md「呼び方」）。
     if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
+    env:
+      # ⚠ checkout 先のパス名を書いてよいのはこの 1 行だけ（用途ごとに文字列を散らさない）。
+      #   参照のしかたは `with:` では ${{ env.ACTIONS_DIR }}、`run:` ではシェル変数 "$ACTIONS_DIR"
+      #   （`run:` で ${{ }} を展開すると値がスクリプトに埋め込まれるため使わない）。
+      ACTIONS_DIR: .trillion-game-actions
     # ⚠ ここで宣言できるのは呼び出し元の GITHUB_TOKEN 権限以下だけ（公式ドキュメント:
     #   https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows
     #   「permissions can only be maintained or reduced—not elevated—throughout the chain」）。
@@ -69,9 +76,9 @@ jobs:
         with:
           repository: machina-gg/trillion-game-actions
           ref: main
-          path: .trillion-game-actions
+          path: ${{ env.ACTIONS_DIR }}
           # public リポジトリの読み取り専用 checkout で以後の git 操作も無いため、
-          # GITHUB_TOKEN を .trillion-game-actions/.git/config に残さない
+          # GITHUB_TOKEN を checkout 先の .git/config に残さない
           persist-credentials: false
 
       # profile の値をシェルにも prompt にも素通しさせない。カンマで分割し、ファイル名として
@@ -83,7 +90,7 @@ jobs:
           PROFILE_INPUT: ${{ inputs.profile }}
         run: |
           INPUT="${PROFILE_INPUT//[[:space:]]/}"
-          PROMPT_LIST=""
+          PROFILE_PATHS=""
           IFS=',' read -r -a PROFILE_NAMES <<< "$INPUT"
           for NAME in "${PROFILE_NAMES[@]}"; do
             if [ -z "$NAME" ]; then
@@ -93,13 +100,43 @@ jobs:
               echo "::error title=Agent Review::profile の値が不正です。使えるのは英数字・ハイフン・アンダースコアと、区切りのカンマだけです（利用できるプロファイルの一覧は machina-gg/trillion-game-actions の README.md）"
               exit 1
             fi
-            PROMPT_LIST="${PROMPT_LIST:+${PROMPT_LIST}, }.trillion-game-actions/perspectives/${NAME}.md"
+            PROFILE_PATHS="${PROFILE_PATHS:+${PROFILE_PATHS} }${ACTIONS_DIR}/perspectives/${NAME}.md"
           done
-          if [ -z "$PROMPT_LIST" ]; then
+          # 空白区切り（実在検査が読む形）と、カンマ区切り（プロンプトに載せる形）を同じ 1 本から作る。
+          # ⚠ profile 名は上で英数字・ハイフン・アンダースコアに限っているため、パスに空白は入らない。
+          echo "profile_paths=${PROFILE_PATHS}" >> "$GITHUB_OUTPUT"
+          if [ -z "$PROFILE_PATHS" ]; then
             PROMPT_LIST="なし（common.md だけを読む）"
+          else
+            PROMPT_LIST="${PROFILE_PATHS// /, }"
           fi
           echo "prompt_list=${PROMPT_LIST}" >> "$GITHUB_OUTPUT"
           echo "=== 追加プロファイル: ${PROMPT_LIST} ==="
+
+      # プロンプトに載せる観点ファイルが実在するかを、Claude を呼ぶ前に機械で確かめる。
+      # ⚠ common.md が読めない状態で Claude を呼ぶと、モデルが自力でワークスペースを探索して
+      #   補ってしまい、パスのずれが run の成否に出ない（実測: 本リポジトリ #10）。
+      #   モデルの挙動に依存させず、ここで止める（fail-close）。
+      # ⚠ 追加プロファイルの不在では止めない（::warning だけ）。未知の profile 名を無視して
+      #   レビューを続ける仕様を変えないため（同じ指示が下のプロンプトにもある）。
+      - name: Verify perspective files exist
+        env:
+          PROFILE_PATHS: ${{ steps.profile.outputs.profile_paths }}
+        run: |
+          COMMON_PATH="${ACTIONS_DIR}/perspectives/common.md"
+          if [ ! -f "$COMMON_PATH" ]; then
+            echo "::error title=Agent Review::全リポジトリ共通の観点ファイルが見つかりません: ${COMMON_PATH}（checkout の失敗か、checkout 先のパス名のずれ）。Claude を呼ばずに止めます"
+            exit 1
+          fi
+          echo "=== 観点ファイルを確認: ${COMMON_PATH} ==="
+          read -r -a PROFILE_PATH_LIST <<< "$PROFILE_PATHS"
+          for PROFILE_PATH in ${PROFILE_PATH_LIST[@]+"${PROFILE_PATH_LIST[@]}"}; do
+            if [ -f "$PROFILE_PATH" ]; then
+              echo "=== 追加プロファイルを確認: ${PROFILE_PATH} ==="
+            else
+              echo "::warning title=Agent Review::指定された追加プロファイルが見つかりません: ${PROFILE_PATH}（無視してレビューを続けます。利用できるプロファイルの一覧は machina-gg/trillion-game-actions の README.md）"
+            fi
+          done
 
       # job 開始時刻（判定行を探す下限）と secret の有無を後続ステップへ渡す。
       # ⚠ GitHub Actions の仕様上 `if:` で secrets を直接参照できないため、env に写して判定する。
@@ -140,13 +177,13 @@ jobs:
             この Pull Request をレビューしてください。観点・判定基準・結果フォーマットの SSOT は
             次のファイルです（ワークスペースにチェックアウト済み）。
 
-            - .trillion-game-actions/perspectives/common.md （全リポジトリ共通。必ず読む）
+            - ${{ env.ACTIONS_DIR }}/perspectives/common.md （全リポジトリ共通。必ず読む）
             - 追加プロファイル: ${{ steps.profile.outputs.prompt_list }}
             - リポジトリ直下の CLAUDE.md （存在すれば読む。無ければ飛ばす）
 
             指定された追加プロファイルのファイルが存在しない場合は、そのファイルを無視して
             レビューを続け、`未解決:` に「指定されたプロファイルが見つからない」と書いてください
-            （利用できるプロファイルの一覧は .trillion-game-actions/README.md にあります）。
+            （利用できるプロファイルの一覧は ${{ env.ACTIONS_DIR }}/README.md にあります）。
 
             この実行環境（GitHub Actions・GITHUB_TOKEN）での読み替え:
             - 差分は `gh pr diff`、PR 情報は `gh pr view --json`、関連 Issue（PR 本文の Closes #N）は
@@ -194,11 +231,11 @@ jobs:
           SINCE: ${{ steps.prep.outputs.since }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          TAMPER_STATUS="$(git -C .trillion-game-actions status --porcelain --untracked-files=all)"
+          TAMPER_STATUS="$(git -C "$ACTIONS_DIR" status --porcelain --untracked-files=all)"
           if [ -n "$TAMPER_STATUS" ]; then
-            echo "::error title=Agent Review::.trillion-game-actions/ が checkout 時点から変更されています（Claude の実行後・追跡ファイルの変更または未追跡ファイルの追加）。Approve を押さずに止めます"
+            echo "::error title=Agent Review::${ACTIONS_DIR}/ が checkout 時点から変更されています（Claude の実行後・追跡ファイルの変更または未追跡ファイルの追加）。Approve を押さずに止めます"
             echo "$TAMPER_STATUS"
             exit 1
           fi
-          echo "=== .trillion-game-actions/ は checkout 時点から変更なし（追跡ファイルの変更・未追跡ファイルの追加とも無し） ==="
-          bash .trillion-game-actions/scripts/approve-if-verdict.sh "$PR_NUMBER" "$SINCE" "$HEAD_SHA"
+          echo "=== ${ACTIONS_DIR}/ は checkout 時点から変更なし（追跡ファイルの変更・未追跡ファイルの追加とも無し） ==="
+          bash "${ACTIONS_DIR}/scripts/approve-if-verdict.sh" "$PR_NUMBER" "$SINCE" "$HEAD_SHA"

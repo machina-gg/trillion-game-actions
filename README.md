@@ -102,7 +102,10 @@ repository secret に登録する（リポジトリ管理者の作業）。
 上の表にない技術スタック（静的サイトジェネレータ・Web アプリのフレームワーク等）の
 プロファイルは**まだ作っていない**。指定しない（`common.md` だけで運用する）か、
 このリポジトリに追加する。**存在しないプロファイルを指定した場合はそのファイルが無視され、
-レビュー本文の `未解決:` にその旨が書かれる**（job は失敗しない）。
+レビュー本文の `未解決:` にその旨が書かれる**（job は失敗しない。run のログには `::warning` が出る）。
+
+⚠ **一方、常に読まれる `perspectives/common.md` が checkout 先に無い場合は、Claude を呼ばずに
+run を失敗させる**（fail-close）。観点を読めないままレビューが進むのを防ぐため。
 
 ## 判定行の契約
 
@@ -193,15 +196,15 @@ composite action。どれも無く、override ラベルも付いていなけれ�
 
 ## ディレクトリ構成
 
-| パス                                  | 役割                                                           |
-| ------------------------------------- | -------------------------------------------------------------- |
-| `.github/workflows/review.yml`        | reusable workflow（本体）                                      |
-| `.github/workflows/claude-review.yml` | このリポジトリ自身の PR をレビューする呼び出し元               |
-| `.github/workflows/ci.yml`            | このリポジトリ自身の CI（shellcheck / テスト / 整形）          |
-| `.github/actions/issue-link-check/`   | Issue 紐づけ検査の composite action（判定は同梱の `check.sh`） |
-| `scripts/approve-if-verdict.sh`       | 判定行を読んで Approve を押す                                  |
-| `tests/*.test.sh`                     | 上記スクリプトの回帰テスト（外部依存なしで走る）               |
-| `perspectives/`                       | レビュー観点（`common.md` + プロファイル）                     |
+| パス                                  | 役割                                                             |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `.github/workflows/review.yml`        | reusable workflow（本体）                                        |
+| `.github/workflows/claude-review.yml` | このリポジトリ自身の PR をレビューする呼び出し元                 |
+| `.github/workflows/ci.yml`            | このリポジトリ自身の CI（shellcheck / テスト / 整形）            |
+| `.github/actions/issue-link-check/`   | Issue 紐づけ検査の composite action（判定は同梱の `check.sh`）   |
+| `scripts/approve-if-verdict.sh`       | 判定行を読んで Approve を押す                                    |
+| `tests/*.test.sh`                     | 上記のスクリプトとワークフローの回帰テスト（外部依存なしで走る） |
+| `perspectives/`                       | レビュー観点（`common.md` + プロファイル）                       |
 
 ## ローカルでの検査
 
