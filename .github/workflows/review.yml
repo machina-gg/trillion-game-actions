@@ -93,7 +93,7 @@ jobs:
               echo "::error title=Agent Review::profile の値が不正です。使えるのは英数字・ハイフン・アンダースコアと、区切りのカンマだけです（利用できるプロファイルの一覧は machina-gg/trillion-game-actions の README.md）"
               exit 1
             fi
-            PROMPT_LIST="${PROMPT_LIST:+${PROMPT_LIST}, }.trillion-game-actions/perspectives/${NAME}.md"
+            PROMPT_LIST="${PROMPT_LIST:+${PROMPT_LIST}, }.agent-review/perspectives/${NAME}.md"
           done
           if [ -z "$PROMPT_LIST" ]; then
             PROMPT_LIST="なし（common.md だけを読む）"
@@ -140,7 +140,7 @@ jobs:
             この Pull Request をレビューしてください。観点・判定基準・結果フォーマットの SSOT は
             次のファイルです（ワークスペースにチェックアウト済み）。
 
-            - .trillion-game-actions/perspectives/common.md （全リポジトリ共通。必ず読む）
+            - .agent-review/perspectives/common.md （全リポジトリ共通。必ず読む）
             - 追加プロファイル: ${{ steps.profile.outputs.prompt_list }}
             - リポジトリ直下の CLAUDE.md （存在すれば読む。無ければ飛ばす）
 
