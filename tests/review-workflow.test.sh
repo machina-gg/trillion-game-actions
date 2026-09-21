@@ -15,6 +15,12 @@
 #   4. 観点ファイルの実在検査が Claude の呼び出しより前にあり、fail-close であること
 #      （`common.md` が無ければ exit 1。⚠ 追加プロファイルの不在は exit 0 + `::warning` で、
 #      未知の profile 名を無視してレビューを続ける仕様を変えない）
+#   5. ⚠ **実在検査のステップ自体が無効化されていない**（`if:` で skip させる / `continue-on-error:`
+#      で exit 1 を無害化する）。検査を消さずに黙らせる形も「壊れているのに CI が緑」であり、
+#      4 の振る舞い検査だけでは通ってしまう（本リポジトリ #10 のレビューで実証された変異）
+#
+# ⚠ 検査対象のステップは**名前ではなく、やっていること**（run: の中で common.md を見ている）で
+#   特定する。期待値をテスト側へ書き写すと、パス名やステップ名を変えたときに追随できないため。
 
 set -uo pipefail
 
@@ -99,33 +105,64 @@ assert_workflow_matches 'bash "\$\{?ACTIONS_DIR\}?/scripts/approve-if-verdict\.s
 # 4. 観点ファイルの実在検査（fail-close）
 # ------------------------------------------------------------------
 
-VERIFY_STEP_NAME="Verify perspective files exist"
+# ⚠ ステップは名前で探さない（改名に追随できるよう、やっていることで特定する）。
+#   「run: ブロックの中で common.md を見ているステップ」で割り出す
+#   （claude-code-action も with: の prompt で同じパスに触れるが、run: を持たないので当たらない）。
+STEP_START_LINES="$(command grep -nE '^      - ' "$WORKFLOW" | cut -d: -f1)"
 
-VERIFY_STEP_LINE="$(command grep -nF -- "- name: ${VERIFY_STEP_NAME}" "$WORKFLOW" | head -n 1)"
+# 指定した行を含むステップの開始行を返す
+enclosing_step_start() { # $1 = 行番号
+  printf '%s\n' "$STEP_START_LINES" | awk -v n="$1" '$1 <= n { s = $1 } END { print s }'
+}
+
+VERIFY_STEP_START=""
+VERIFY_STEP_HITS=0
+while read -r REF_LINE; do
+  [[ -z "$REF_LINE" ]] && continue
+  STEP_START="$(enclosing_step_start "$REF_LINE")"
+  [[ -z "$STEP_START" ]] && continue
+  if sed -n "${STEP_START},${REF_LINE}p" "$WORKFLOW" | command grep -qE '^[[:space:]]*run: \|'; then
+    VERIFY_STEP_START="$STEP_START"
+    VERIFY_STEP_HITS=$((VERIFY_STEP_HITS + 1))
+  fi
+done <<< "$(command grep -nE 'perspectives/common\.md' "$WORKFLOW" | cut -d: -f1)"
+
+assert_equals "$VERIFY_STEP_HITS" "1" "run: の中で common.md の実在を見ているステップがちょうど 1 つある"
+
+VERIFY_STEP_BLOCK=""
+VERIFY_STEP_NAME=""
+if [[ -n "$VERIFY_STEP_START" ]]; then
+  # ステップの終わりは次のステップの開始直前（無ければファイル末尾）
+  VERIFY_STEP_END="$(printf '%s\n' "$STEP_START_LINES" | awk -v s="$VERIFY_STEP_START" '$1 > s { print $1 - 1; exit }')"
+  if [[ -z "$VERIFY_STEP_END" ]]; then
+    VERIFY_STEP_END="$(command grep -c '' "$WORKFLOW")"
+  fi
+  VERIFY_STEP_BLOCK="$(sed -n "${VERIFY_STEP_START},${VERIFY_STEP_END}p" "$WORKFLOW")"
+  VERIFY_STEP_NAME="$(printf '%s\n' "$VERIFY_STEP_BLOCK" | awk -F'name: ' '/^(      - |        )name: / { print $2; exit }')"
+fi
+
 CLAUDE_STEP_LINE="$(command grep -nF -- "uses: anthropics/claude-code-action" "$WORKFLOW" | head -n 1)"
-if [[ -n "$VERIFY_STEP_LINE" && -n "$CLAUDE_STEP_LINE" && "${VERIFY_STEP_LINE%%:*}" -lt "${CLAUDE_STEP_LINE%%:*}" ]]; then
+if [[ -n "$VERIFY_STEP_START" && -n "$CLAUDE_STEP_LINE" && "$VERIFY_STEP_START" -lt "${CLAUDE_STEP_LINE%%:*}" ]]; then
   pass "観点ファイルの実在検査は claude-code-action より前にある"
 else
   fail "観点ファイルの実在検査は claude-code-action より前にある" \
-    "実在検査: ${VERIFY_STEP_LINE:-見つからない}" "claude-code-action: ${CLAUDE_STEP_LINE:-見つからない}"
+    "実在検査の開始行: ${VERIFY_STEP_START:-見つからない}" "claude-code-action: ${CLAUDE_STEP_LINE:-見つからない}"
 fi
+
+# ⚠ 検査ステップ自体を無効化されたら、ずれても run は緑のまま通る（本 Issue と同じ欠陥クラス）。
+#   `if:` は検査ごと skip させ、`continue-on-error:` は exit 1 を無害化する。どちらも持たせない。
+DISABLED_KEYS="$(printf '%s\n' "$VERIFY_STEP_BLOCK" | command grep -E '^(      - |        )(if|continue-on-error):' || true)"
+assert_equals "$DISABLED_KEYS" "" \
+  "実在検査のステップが無効化されていない（if: / continue-on-error: を持たない。ステップ名: ${VERIFY_STEP_NAME:-不明}）"
 
 # 実在検査ステップの run: ブロックを切り出してそのまま実行する（振る舞いで検査する）。
 # ⚠ シェルは行頭の空白を無視するので、YAML のインデントは落とさずに渡せる。
-VERIFY_SCRIPT="$(
-  awk -v name="- name: ${VERIFY_STEP_NAME}" '
-    index($0, name) { instep = 1; next }
-    instep && !inrun && /^[[:space:]]*- (name|uses):/ { exit }
-    instep && !inrun && /run: \|/ { inrun = 1; next }
-    inrun && /^[[:space:]]*- (name|uses):/ { exit }
-    inrun { print }
-  ' "$WORKFLOW"
-)"
+VERIFY_SCRIPT="$(printf '%s\n' "$VERIFY_STEP_BLOCK" | awk '/^[[:space:]]*run: \|/ { inrun = 1; next } inrun { print }')"
 
 if [[ -n "$VERIFY_SCRIPT" ]]; then
   pass "実在検査ステップの run: ブロックを切り出せた"
 else
-  fail "実在検査ステップの run: ブロックを切り出せた" "ステップ名「${VERIFY_STEP_NAME}」が見つからないか run: | が無い"
+  fail "実在検査ステップの run: ブロックを切り出せた" "common.md を見る run: ブロックを持つステップが見つからない"
 fi
 
 # mktemp -d の戻り値を検証してから trap を張る
