@@ -33,7 +33,7 @@ echo "== trillion-game-actions (approve-if-verdict.sh) =="
 # ------------------------------------------------------------------
 
 # mktemp -d の戻り値を検証してから trap を張る
-if ! TMP="$(mktemp -d "${TMPDIR:-/tmp}/agent-review-test.XXXXXXXX")"; then
+if ! TMP="$(mktemp -d "${TMPDIR:-/tmp}/trillion-game-actions-test.XXXXXXXX")"; then
   echo "エラー: mktemp -d に失敗しました。テストを中断します。" >&2
   exit 5
 fi
