@@ -1,9 +1,8 @@
 name: Issue Link Check
 description: PR 本文に Issue 紐づけ（Closes / Fixes / Resolves / Refs + #番号）があるかを検査する。
 
-# ⚠ 判定ロジックはここに書かない。実体は check.sh にある
-#   （composite action の `run:` に直接書いたシェルは単体テストできないため）。
-#   このファイルは「入力を環境変数に写して check.sh を呼ぶ」だけを担う。
+# 判定ロジックはここに書かない（composite action の `run:` に直接書いたシェルは単体テストできない）。
+# このファイルは入力を環境変数に写して check.sh を呼ぶだけを担う。
 
 inputs:
   pr-body:

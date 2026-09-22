@@ -5,7 +5,7 @@
 #
 # 最重要の回帰対象:
 #   1. 受理する語は closes / fixes / resolves / **refs** の 4 つ
-#      （⚠ refs が落ちると、シリーズ作業の途中 PR が規約どおりに書いても検査に落ちる）
+#      （refs が落ちると、シリーズ作業の途中 PR が規約どおりに書いても検査に落ちる）
 #   2. override ラベルは**要素の完全一致**でだけスキップする
 #      （前後に語を足した似た名前のラベルや、カンマ連結への部分一致でスキップさせない）
 #   3. 入力を解釈できないときはスキップせず検査を実行する（fail-close）
@@ -23,9 +23,7 @@ SCRIPT="${ACTION_DIR}/check.sh"
 
 echo "== trillion-game-actions (issue-link-check/check.sh) =="
 
-# ------------------------------------------------------------------
 # 実行ヘルパー
-# ------------------------------------------------------------------
 
 # 渡す環境変数を CHECK_ENV に積んでから run_check を呼ぶ（1 回ごとに空に戻る）。
 # ⚠ 積まなかった変数は「未設定」として渡る（空文字との違いを検査するため）。
@@ -56,9 +54,7 @@ NOJQ_PATH="${TMP}/nojq-bin"
 LABELS_NONE='[]'
 LABELS_OVERRIDE='["bug","override:no-issue"]'
 
-# ------------------------------------------------------------------
 # 1. 本文の受理パターン
-# ------------------------------------------------------------------
 
 for keyword in Closes Fixes Resolves Refs; do
   CHECK_ENV=("PR_BODY=${keyword} #5" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
@@ -96,15 +92,13 @@ CHECK_ENV=("PR_BODY=Refs #123の続き" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_L
 run_check
 assert_equals "$STATUS" "0" "番号の直後に日本語が続く形も受理する（右側に境界を置かない）"
 
-# ⚠ 右側に境界を置かない選択の裏返し。置けば弾けるが、上の「番号の直後に日本語」が通らなくなる
+# 右側に境界を置かない選択の裏返し。置けば弾けるが、上の「番号の直後に日本語」が通らなくなる
 #   （UTF-8 ロケールでは日本語が [[:alnum:]] に入る）ため、受理する側を選んでいる。
 CHECK_ENV=("PR_BODY=Closes #12abc" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
 run_check
 assert_equals "$STATUS" "0" "番号の直後に英字が続く形も受理する（右側に境界を置かない選択）"
 
-# ------------------------------------------------------------------
 # 2. 本文が受理されない形
-# ------------------------------------------------------------------
 
 CHECK_ENV=("PR_BODY=概要だけを書いた本文" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
 run_check
@@ -128,9 +122,7 @@ CHECK_ENV=("PR_BODY=Refsx #5" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=overr
 run_check
 assert_equals "$STATUS" "1" "語の直後に文字が続く形は受理しない"
 
-# ------------------------------------------------------------------
-# 2-2. 英単語の末尾への部分一致（⚠ 左の境界が落ちると素通りする）
-# ------------------------------------------------------------------
+# 2-2. 英単語の末尾への部分一致（左の境界が落ちると素通りする）
 
 # ⚠ ここが通ると、Issue と無関係な本文が脚注番号などの #数字 だけで検査を通過する
 #   （override ラベル無しで、誰の意図もなく必須チェックが無効化される）。
@@ -157,9 +149,7 @@ prefixes #3 を説明する行" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=ove
 run_check
 assert_equals "$STATUS" "1" "行頭の部分一致（prefixes #3）も受理しない"
 
-# ------------------------------------------------------------------
 # 3. override ラベル（要素の完全一致でだけスキップする）
-# ------------------------------------------------------------------
 
 NO_LINK="紐づけの無い本文"
 
@@ -193,9 +183,7 @@ CHECK_ENV=("PR_BODY=${NO_LINK}" "LABELS_JSON=[\"skip:issue-link\"]" "OVERRIDE_LA
 run_check
 assert_equals "$STATUS" "0" "override-label に指定した名前と完全一致すればスキップする"
 
-# ------------------------------------------------------------------
 # 4. 入力が解釈できないとき（スキップしない = fail-close）
-# ------------------------------------------------------------------
 
 CHECK_ENV=("PR_BODY=${NO_LINK}" "LABELS_JSON=override:no-issue" "OVERRIDE_LABEL=override:no-issue")
 run_check
@@ -237,15 +225,13 @@ run_check
 assert_equals "$STATUS" "1" "PR_BODY が未設定なら入力不正として exit 1"
 assert_contains "$OUT" "PR_BODY が未設定" "PR_BODY 未設定の理由を出力する"
 
-# ------------------------------------------------------------------
 # 5. jq の可視化と、ロジックの置き場
-# ------------------------------------------------------------------
 
 CHECK_ENV=("PR_BODY=Closes #5" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
 run_check
 assert_contains "$OUT" "jq-" "jq のバージョンをログに残す（ランナーでの有無を可視化する）"
 
-# ⚠ jq が要るのはラベル検査だけ。jq の有無で本文検査の結論を変えない
+# jq が要るのはラベル検査だけ。jq の有無で本文検査の結論を変えない
 #   （冒頭で落としていると、正しい Closes #N があっても常に exit 1 になる）。
 CHECK_ENV=("PATH=${NOJQ_PATH}" "PR_BODY=Closes #5" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
 run_check
