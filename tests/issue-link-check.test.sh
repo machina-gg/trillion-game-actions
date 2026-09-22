@@ -101,14 +101,16 @@ assert_equals "$STATUS" "0" "番号の直後に英字が続く形も受理する
 # 長い本文でも受理する。⚠ 紐づけは本文の先頭にだけ置く（末尾にも置くと grep が最後まで読むことになり、
 #   早期終了に由来する回帰を検出できない）。本文の渡し方をパイプに戻すと、grep が先頭の一致で終了した
 #   あとに書き手が EPIPE になり、pipefail で「一致したのに非 0」になってここが落ちる。
+# ⚠ 埋め草は 64 KiB。書き手が一度に書き切れず複数回に分ける大きさが要る一方、Linux が環境変数 1 つに
+#   課す上限（128 KiB）は超えられない（超えると check.sh を起動できず、検査ではなく起動失敗で落ちる）。
 LONG_FILLER="0123456789abcdef"
-while ((${#LONG_FILLER} < 131072)); do
+while ((${#LONG_FILLER} < 65536)); do
   LONG_FILLER+="$LONG_FILLER"
 done
 CHECK_ENV=("PR_BODY=Closes #5
 ${LONG_FILLER}" "LABELS_JSON=${LABELS_NONE}" "OVERRIDE_LABEL=override:no-issue")
 run_check
-assert_equals "$STATUS" "0" "先頭に紐づけがあれば 128 KiB の本文が続いても受理する"
+assert_equals "$STATUS" "0" "先頭に紐づけがあれば 64 KiB の本文が続いても受理する"
 
 # 2. 本文が受理されない形
 
