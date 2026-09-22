@@ -1,29 +1,10 @@
 name: Agent Review
 
-# 呼び出し元リポジトリの Pull Request を GitHub Actions 上の Claude がレビューし、
-# 判定行が `判定: APPROVE` のときだけ GITHUB_TOKEN（github-actions[bot]）で Approve を押す
-# reusable workflow。呼び方・呼び出し元に必要な permissions・プロファイル一覧は README.md を参照。
-#
-# なぜ要るか: PR 作成者・レビュー実行者が同一 GitHub アカウントで動く運用では、そのアカウントは
-# 正式な Approve を出せない（GitHub は PR 作成者自身の Approve を受け付けない）。GITHUB_TOKEN の
-# Approve はブランチルールセットの必須 Approve に数えられるため、別身元の Approve をここで作る。
-#
-# 呼び出し元のワークスペース内には、このリポジトリを checkout する先のディレクトリを作る
-# （パス名はリポジトリ名に合わせてある）。⚠ そのパス名の定義は job の env の ACTIONS_DIR 1 箇所だけで、
-# 各用途（checkout / プロンプト / 改竄検査 / スクリプト呼び出し）はすべてそこを参照する
-# （一部だけずれても run が緑のまま Approve だけが壊れるため。tests/review-workflow.test.sh が固定する）。
-#
-# ⚠ 2 段構え。Claude は `gh pr comment` で講評を投稿するだけで Approve は押せない
-#   （`gh api` / `gh pr review` / inline コメント MCP を許可しない）。Approve を押すのは
-#   ACTIONS_DIR が指す先の scripts/approve-if-verdict.sh で、判定行の形式・投稿者・時刻・head SHA を
-#   機械で検査してから実行する（判定順はスクリプト冒頭のコメント）。
-# ⚠ Approve しない経路（REQUEST_CHANGES / 判定行なし / head が動いた / secret 未設定 /
-#   claude-code-action 自体の失敗）でも job は成功で終える。job を失敗させると、Approve が
-#   付かないことに加えて「CI が赤い」という別の理由でも PR が止まり、原因が二重になる。
-#   Approve が付かなければ呼び出し元のルールセットが止める。
-#   ⚠ 唯一 job を失敗させるのは (a) profile の値が不正、(b) 観点ファイル common.md の不在、
-#   (c) ACTIONS_DIR が指す先の改変検出、(d) approve-if-verdict.sh の UNDETERMINED（API 失敗・解釈不能）で、
-#   いずれも「Approve を押せない異常」を run の失敗で見せるためのもの（fail-close）。
+# 呼び出し元リポジトリの Pull Request を GitHub Actions 上の Claude がレビューし、判定行が
+# `判定: APPROVE` のときだけ GITHUB_TOKEN（github-actions[bot]）で Approve を押す reusable workflow。
+# 呼び方・呼び出し元に必要な permissions・プロファイル一覧は README.md を参照。
+# 2 段構え。Claude は講評を投稿するだけで、Approve は scripts/approve-if-verdict.sh が判定行の形式・
+# 投稿者・時刻・head SHA を機械で検査してから押す。Approve しない経路でも job は成功で終える。
 # ⚠ 呼び出し元の PR が自分の workflow 定義を変えて自己 Approve できる構造は塞いでいない
 #   （pull_request は PR 側の定義を実行するため）。`.yml` を人間マージにする運用で守る。
 
@@ -44,46 +25,34 @@ on:
 
 jobs:
   review:
-    # draft と、github-actions[bot] 自身が作った PR は対象外（自分の投稿を自分でレビューしない）。
-    # ⚠ 呼び出し元は `on: pull_request` であることが前提（README.md「呼び方」）。
+    # draft と github-actions[bot] 自身の PR は対象外（呼び出し元は `on: pull_request` が前提）。
     if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     env:
-      # ⚠ checkout 先のパス名を書いてよいのはこの 1 行だけ（用途ごとに文字列を散らさない）。
-      #   参照のしかたは `with:` では ${{ env.ACTIONS_DIR }}、`run:` ではシェル変数 "$ACTIONS_DIR"
-      #   （`run:` で ${{ }} を展開すると値がスクリプトに埋め込まれるため使わない）。
+      # checkout 先のパス名を書いてよいのはこの 1 行だけ（用途ごとに文字列が散ると、一部だけずれても run は緑のまま Approve が壊れる）。
       ACTIONS_DIR: .trillion-game-actions
-    # ⚠ ここで宣言できるのは呼び出し元の GITHUB_TOKEN 権限以下だけ（公式ドキュメント:
-    #   https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows
-    #   「permissions can only be maintained or reduced—not elevated—throughout the chain」）。
-    #   呼び出し元の job にも同じ 3 つを与えること（README.md「呼び出し元に必要な permissions」）。
+    # 呼び出し元の GITHUB_TOKEN 権限以下しか宣言できない。Approve に pull-requests: write、コメント投稿に issues: write。
     permissions:
       contents: read
-      # Approve（reviews API）に pull-requests: write、`gh pr comment` に issues: write が要る
       pull-requests: write
       issues: write
     steps:
-      # 呼び出し元リポジトリ（レビュー対象）。fetch-depth: 0 は差分・履歴を読ませるため。
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # 観点と Approve スクリプトの実体。public リポジトリなので token を渡さずに取れる。
-      # ⚠ ref は main 固定。呼び出し元の PR が観点や Approve スクリプトを差し替える経路を作らない
-      #   （trillion-game-actions 自身の PR をレビューするときも、観点は main のものが使われる）。
+      # 観点と Approve スクリプトの実体（public なので token を渡さずに取れる）。⚠ ref は main 固定
+      #   （呼び出し元の PR が観点や Approve スクリプトを差し替えてから自分をレビューさせる経路を作らない）。
       - name: Checkout trillion-game-actions
         uses: actions/checkout@v7
         with:
           repository: machina-gg/trillion-game-actions
           ref: main
           path: ${{ env.ACTIONS_DIR }}
-          # public リポジトリの読み取り専用 checkout で以後の git 操作も無いため、
-          # GITHUB_TOKEN を checkout 先の .git/config に残さない
+          # 読み取り専用の checkout なので GITHUB_TOKEN を .git/config に残さない
           persist-credentials: false
 
-      # profile の値をシェルにも prompt にも素通しさせない。カンマで分割し、ファイル名として
-      # 安全な文字集合だけを通す（外れたら run を失敗させる = fail-close）。
-      # ⚠ 不正な値そのものはログに出さない（ログへの制御シーケンス混入を避ける）。
+      # profile の値をシェルにも prompt にも素通しさせない（ファイル名として安全な文字集合だけを通し、外れたら失敗させる = fail-close）。
       - name: Validate profile input
         id: profile
         env:
@@ -102,8 +71,6 @@ jobs:
             fi
             PROFILE_PATHS="${PROFILE_PATHS:+${PROFILE_PATHS} }${ACTIONS_DIR}/perspectives/${NAME}.md"
           done
-          # 空白区切り（実在検査が読む形）と、カンマ区切り（プロンプトに載せる形）を同じ 1 本から作る。
-          # ⚠ profile 名は上で英数字・ハイフン・アンダースコアに限っているため、パスに空白は入らない。
           echo "profile_paths=${PROFILE_PATHS}" >> "$GITHUB_OUTPUT"
           if [ -z "$PROFILE_PATHS" ]; then
             PROMPT_LIST="なし（common.md だけを読む）"
@@ -113,12 +80,8 @@ jobs:
           echo "prompt_list=${PROMPT_LIST}" >> "$GITHUB_OUTPUT"
           echo "=== 追加プロファイル: ${PROMPT_LIST} ==="
 
-      # プロンプトに載せる観点ファイルが実在するかを、Claude を呼ぶ前に機械で確かめる。
-      # ⚠ common.md が読めない状態で Claude を呼ぶと、モデルが自力でワークスペースを探索して
-      #   補ってしまい、パスのずれが run の成否に出ない（実測: 本リポジトリ #10）。
-      #   モデルの挙動に依存させず、ここで止める（fail-close）。
-      # ⚠ 追加プロファイルの不在では止めない（::warning だけ）。未知の profile 名を無視して
-      #   レビューを続ける仕様を変えないため（同じ指示が下のプロンプトにもある）。
+      # プロンプトに載せる観点ファイルの実在を Claude の呼び出し前に確かめる。共通の観点が読めないまま
+      # 呼ぶとモデルが自力で補い、パスのずれが run の成否に出ない。追加プロファイルの不在では止めない。
       - name: Verify perspective files exist
         env:
           PROFILE_PATHS: ${{ steps.profile.outputs.profile_paths }}
@@ -138,10 +101,8 @@ jobs:
             fi
           done
 
-      # job 開始時刻（判定行を探す下限）と secret の有無を後続ステップへ渡す。
-      # ⚠ GitHub Actions の仕様上 `if:` で secrets を直接参照できないため、env に写して判定する。
-      #   secret が無いだけで呼び出し元の PR が「CI 赤」になるのを防ぐため、無いときは skip して
-      #   job は成功で終える。
+      # job 開始時刻（判定行を探す下限）と secret の有無を後続へ渡す（`if:` で secrets を直接参照できない
+      # ため env に写す。secret が無いときは skip し、未設定だけで「CI 赤」にしない）。
       - name: Record start time and check secret
         id: prep
         env:
@@ -157,12 +118,9 @@ jobs:
             echo "has_token=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # prompt を渡さないとアクションは「@claude メンション応答」モードになり何もせず終わる。
-      # github_token を渡すので投稿身元は github-actions[bot]。
-      # ⚠ prompt に観点・判定基準・フォーマットを再掲しない（SSOT は perspectives/）。
-      #   ここに書くのは「この実行環境での読み替え」だけ。
-      # ⚠ continue-on-error: Claude の一過性の失敗（API 障害・レート制限等）で job を失敗させない。
-      #   失敗すればレビューコメントが無く Approve も付かないので、止めるのはルールセット側。
+      # prompt を渡さないとアクションは「@claude メンション応答」モードになり何もせず終わる。投稿身元は
+      # github_token（github-actions[bot]）。観点・判定基準・フォーマットは再掲しない（SSOT は perspectives/）。
+      # continue-on-error は一過性の失敗で job を失敗させないため。
       - uses: anthropics/claude-code-action@v1
         id: claude
         if: steps.prep.outputs.has_token == 'true'
@@ -199,14 +157,10 @@ jobs:
               （複数行の本文を判定行付きで確実に投稿するための標準の経路）。
               inline コメントは使わない。指摘のためだけの指摘はしない。
               レビュー内容は必ず GitHub のコメントとして投稿し、メッセージとして出力するだけで終わらせない。
-          # ⚠ 許可しないもの（設計上の必須事項）:
-          #   - Bash(gh api:*) / Bash(gh pr review:*): Claude 自身が Approve を押せる形になる
-          #   - mcp__github_inline_comment__create_inline_comment: review thread を作り、
-          #     未解決スレッドとしてマージを止める
-          #   --allowedTools は既定のツールに足す形なので、上の 3 つは --disallowedTools でも明示的に落とす。
-          # Write と Bash(mktemp:*) を許可する理由: 複数行の本文を判定行付きで確実に投稿するため、
-          #   Write + --body-file を標準の経路にしている（Write 無しでは判定行が 1 行に圧縮され
-          #   approve-if-verdict.sh の抽出条件に当たらない）。Edit は不要（成果物を修正させない）。
+          # ⚠ Bash(gh api:*) / Bash(gh pr review:*) と inline コメント MCP を許さない（前者は Claude 自身が
+          #   Approve を押せる形になり、後者は未解決スレッドとしてマージを止める）。--allowedTools は既定に
+          #   足す形なので、落とすものは --disallowedTools にも書く。Write と Bash(mktemp:*) は複数行の本文を
+          #   --body-file で投稿するために要る（無いと判定行が 1 行に潰れる）。
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(mktemp:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(gh pr comment:*),Bash(git diff:*),Bash(git log:*)"
             --disallowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh api:*),Bash(gh pr review:*)"
@@ -217,12 +171,9 @@ jobs:
           CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
         run: echo "::warning title=Agent Review::claude-code-action が ${CLAUDE_OUTCOME} で終わったため Approve のステップを skip します（レビューコメントが無ければ Approve は付かず、ルールセットが止めます。原因は上のステップのログ）"
 
-      # 判定行が APPROVE のときだけ Approve を押す。Approve しない理由が確定した場合も exit 0。
-      # 判定は標準出力の最後の行のラベルで読む（スクリプト冒頭のコメント）。
-      # ⚠ Claude には Write を許しているため、Approve を押すスクリプトと観点を実行前に書き換えられる。
-      #   checkout 時点から変わっていたら Approve を押さずに run を失敗させる（fail-close）。
-      #   `git diff` は追跡ファイルの変更しか見ないため、`status --porcelain` で未追跡ファイルの
-      #   追加も検知対象にする（`--untracked-files=all` で新規ディレクトリの中身も列挙する）。
+      # 判定行が APPROVE のときだけ Approve を押す（判定は標準出力の最後の行のラベルで読む）。Claude に
+      # Write を許しているため、checkout 時点から変わっていたら Approve を押さずに run を失敗させる
+      # （未追跡ファイルの追加も見る。`git diff` は追跡ファイルしか見ない）。
       - name: Approve if verdict is APPROVE
         if: steps.prep.outputs.has_token == 'true' && steps.claude.outcome == 'success'
         env:

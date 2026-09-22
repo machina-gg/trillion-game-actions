@@ -4,20 +4,19 @@
 # gh をスタブに差し替え、実 API を叩かずに判定ロジックだけを検証する
 # （ネットワーク・トークンが無い CI 上でも動くこと）。
 #
-# 最重要の回帰対象:
-#   1. ⚠ **github-actions[bot] 以外の投稿者の `判定: APPROVE` では Approve しない**
-#      （同一アカウントの PM / Reviewer subagent が同じ形式を投稿しても効かないことを固定する。
-#      これが崩れると「自分で書いた判定行で自分の PR を Approve できる」経路が開く）
+# 固定するもの:
+#   1. github-actions[bot] 以外の投稿者の `判定: APPROVE` では Approve しない
+#      （崩れると「自分で書いた判定行で自分の PR を Approve できる」経路が開く）
 #   2. 判定行の形式は行頭固定・装飾なし・引用 / コードブロックの外・1 コメント 1 本
 #      （perspectives/common.md「レビュー結果の定型フォーマット」）。外れた形は判定として読まない
-#   2'. 見出しは行頭 `## レビュー` で始まること。⚠ **括弧の中身は問わない**（`## レビュー(claude)` でも読む。
-#      machina-gg/trillion-game-actions#1）が、行頭でない形・コードブロックの中は見出しとして読まない
+#   2'. 見出しは行頭 `## レビュー` で始まること。括弧の中身は問わない（`## レビュー(claude)` でも読む）が、
+#      行頭でない形・コードブロックの中は見出しとして読まない
 #   3. since より古いコメント / head SHA 不一致では Approve しない
 #   4. Approve しない経路は exit 0（job を失敗させない）。API 失敗・解釈不能は exit 1 + UNDETERMINED（fail-close）
-#   5. ⚠ **標準出力の判定ラベルが正式な判定**。ラベル文字列（APPROVED / SKIPPED_NO_VERDICT /
+#   5. 標準出力の判定ラベルが正式な判定。ラベル文字列（APPROVED / SKIPPED_NO_VERDICT /
 #      SKIPPED_REQUEST_CHANGES / SKIPPED_HEAD_MOVED / UNDETERMINED）と終了コードの対応を全ケースで固定し、
 #      「そのラベルが出ること」と「他のラベルが出ないこと」を対で検査する
-#   6. reviews API は APPROVE のときだけ、event=APPROVE・commit_id=head SHA で **1 回だけ**呼ばれる
+#   6. reviews API は APPROVE のときだけ、event=APPROVE・commit_id=head SHA で 1 回だけ呼ばれる
 
 set -uo pipefail
 
@@ -30,9 +29,7 @@ SCRIPT="${REPO_ROOT}/scripts/approve-if-verdict.sh"
 
 echo "== trillion-game-actions (approve-if-verdict.sh) =="
 
-# ------------------------------------------------------------------
 # 一時環境の構築
-# ------------------------------------------------------------------
 
 # mktemp -d の戻り値を検証してから trap を張る
 if ! TMP="$(mktemp -d "${TMPDIR:-/tmp}/trillion-game-actions-test.XXXXXXXX")"; then
@@ -163,7 +160,7 @@ BODY_INDENTED="${BODY_APPROVE//判定: APPROVE/  判定: APPROVE}"
 BODY_FULLWIDTH_COLON="${BODY_APPROVE//判定: APPROVE/判定： APPROVE}"
 # 見出しが無い（定型ではない投稿）
 BODY_NO_HEADER="${BODY_APPROVE//## レビュー(reviewer)/## 講評}"
-# 見出しの括弧の中身が揺れた（Reviewer が役割名ではなく自分の名前を書いた形。Issue #1）
+# 見出しの括弧の中身が揺れた（Reviewer が役割名ではなく自分の名前を書いた形）
 BODY_HEADER_CLAUDE="${BODY_APPROVE//## レビュー(reviewer)/## レビュー(claude)}"
 # 見出しが引用の中にある（行頭ではないので見出しとして読まない）
 BODY_HEADER_QUOTED="${BODY_APPROVE//## レビュー(reviewer)/> ## レビュー(reviewer)}"
@@ -285,7 +282,7 @@ make_fixture approve_at_since "$HEAD_SHA" "$C_BOT_APPROVE_AT_SINCE"
 make_fixture crlf "$HEAD_SHA" "$C_BOT_CRLF"
 make_fixture trailing_space "$HEAD_SHA" "$C_BOT_TRAILING"
 make_fixture code_block_and_real "$HEAD_SHA" "$C_BOT_CODE_AND_REAL"
-# 見出しの括弧の中身が揺れても候補になる（Issue #1 の再発防止）
+# 見出しの括弧の中身が揺れても候補になる
 make_fixture header_claude "$HEAD_SHA" "$C_BOT_HEADER_CLAUDE"
 make_fixture header_indent3 "$HEAD_SHA" "$C_BOT_HEADER_INDENT3"
 # 複数候補は created_at が最大の 1 件（古い APPROVE + 新しい REQUEST_CHANGES → 何もしない / 逆 → Approve）
@@ -329,7 +326,7 @@ make_fixture reviews_fail "$HEAD_SHA" "$C_BOT_APPROVE"
 touch "${TMP}/reviews_fail/reviews.fail"
 make_fixture reviews_not_approved "$HEAD_SHA" "$C_BOT_APPROVE"
 printf '%s\n' '{"id": 2, "state": "PENDING"}' > "${TMP}/reviews_not_approved/reviews-response.json"
-# body が文字列でない要素（jq の式が評価できず失敗する形。⚠ 「候補なし」へ倒さない。PR #1111 の Copilot 指摘）
+# body が文字列でない要素（jq の式が評価できず失敗する形。「候補なし」へ倒さない）
 make_fixture body_not_string "$HEAD_SHA" "$C_BOT_APPROVE"
 jq --arg l "$BOT" --arg t "$T_AFTER" '. + [{id: 99, html_url: "https://example.invalid/99", created_at: $t, user: {login: $l}, body: 5}]' \
   "${TMP}/body_not_string/comments.json" > "${TMP}/body_not_string/comments.tmp"
@@ -345,9 +342,7 @@ printf '%s\n' 'readonly COMMENTS_JSON=""' > "${TMP}/readonly-comments.sh"
 # フィクスチャ構築はここまで。以降はアサーションのため set -e を解除する
 set +e
 
-# ------------------------------------------------------------------
 # 実行ヘルパー
-# ------------------------------------------------------------------
 
 ALL_LABELS=(APPROVED SKIPPED_NO_VERDICT SKIPPED_REQUEST_CHANGES SKIPPED_HEAD_MOVED UNDETERMINED)
 
@@ -385,9 +380,7 @@ run_approve() { # $1 = フィクスチャ名, $2... = スクリプトへの引�
   AR_ENV=()
 }
 
-# ------------------------------------------------------------------
 # APPROVE → reviews API が event=APPROVE・commit_id=head で 1 回だけ呼ばれる
-# ------------------------------------------------------------------
 
 run_approve approve 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "0" "github-actions[bot] の 判定: APPROVE（since 以降・head 一致）は exit 0"
@@ -428,7 +421,7 @@ assert_label APPROVED "2 ページ目"
 assert_post_count paginated 1 "2 ページ目の判定で reviews API が呼ばれる"
 
 run_approve header_claude 1110 "$SINCE" "$HEAD_SHA"
-assert_equals "$STATUS" "0" "見出しの括弧の中身が違っても（## レビュー(claude)）判定を読む（Issue #1）"
+assert_equals "$STATUS" "0" "見出しの括弧の中身が違っても（## レビュー(claude)）判定を読む"
 assert_label APPROVED "見出しの括弧の揺れ"
 assert_post_count header_claude 1 "括弧の中身が違っても reviews API は 1 回呼ばれる"
 
@@ -442,9 +435,7 @@ assert_equals "$STATUS" "0" "コードブロック内の判定行は数えず、
 assert_label SKIPPED_REQUEST_CHANGES "コードブロック内 APPROVE + 外 REQUEST_CHANGES"
 assert_post_count code_block_and_real 0 "コードブロック内の APPROVE では reviews API を呼ばない"
 
-# ------------------------------------------------------------------
 # Approve しない（exit 0・job を失敗させない）
-# ------------------------------------------------------------------
 
 run_approve request_changes 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "0" "REQUEST_CHANGES は何もせず exit 0（job を失敗させない）"
@@ -477,7 +468,7 @@ assert_equals "$STATUS" "0" "claude[bot] の APPROVE も読まない（身元は
 assert_label SKIPPED_NO_VERDICT "投稿者が claude[bot]"
 assert_post_count claude_bot_author 0 "claude[bot] の投稿では reviews API を呼ばない"
 
-# 判定行の形式（SKILL.md「判定: 行は行頭固定・表記ゆれ禁止」）
+# 判定行の形式（行頭固定・表記ゆれは判定として読まない）
 run_approve decorated 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "0" "装飾つき（**判定: APPROVE**）は判定として読まない"
 assert_label SKIPPED_NO_VERDICT "装飾つき"
@@ -546,9 +537,7 @@ assert_label SKIPPED_HEAD_MOVED "head 不一致"
 assert_post_count head_moved 0 "head 不一致では reviews API を呼ばない"
 assert_contains "$OUT" "$OLD_SHA" "実際の head.sha が出力される"
 
-# ------------------------------------------------------------------
 # 判定不能（exit 1・fail-close）
-# ------------------------------------------------------------------
 
 run_approve reviews_fail 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "1" "reviews API が失敗したら exit 1"
@@ -579,7 +568,7 @@ assert_label UNDETERMINED "head.sha の欠落"
 assert_post_count no_head_sha 0 "head.sha 欠落では reviews API を呼ばない"
 
 run_approve body_not_string 1110 "$SINCE" "$HEAD_SHA"
-assert_equals "$STATUS" "1" "判定行の抽出（jq）が失敗したら exit 1（「候補なし」へ倒さない。PR #1111 の Copilot 指摘）"
+assert_equals "$STATUS" "1" "判定行の抽出（jq）が失敗したら exit 1（「候補なし」へ倒さない）"
 assert_label UNDETERMINED "判定行の抽出に失敗"
 assert_post_count body_not_string 0 "抽出に失敗したら reviews API を呼ばない"
 
@@ -593,9 +582,7 @@ run_approve approve 1110 "$SINCE" "$HEAD_SHA"
 assert_equals "$STATUS" "1" "fatal なシェルエラーは判定不能（exit 1）に倒す"
 assert_label UNDETERMINED "判定を出さずに終わった経路（EXIT trap）"
 
-# ------------------------------------------------------------------
 # 引数・環境変数の検査（exit 1）とヘルプ
-# ------------------------------------------------------------------
 
 run_approve approve 1110 "$SINCE"
 assert_equals "$STATUS" "1" "引数が 2 つなら exit 1"

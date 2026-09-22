@@ -1,8 +1,8 @@
 name: CI
 
 # このリポジトリ自身の検査。PR ごとに走る。
-# ⚠ job 名 `check` はブランチルールセットの必須チェックの context 名になる。変更すると
-#   必須チェックが「存在しないチェック」を待ち続け、全 PR が止まる。
+# ⚠ job 名 `check` はブランチルールセットの必須チェックの context 名。変えると必須チェックが
+#   「存在しないチェック」を待ち続け、全 PR が止まる。
 
 on:
   pull_request:
@@ -23,8 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # shellcheck は ubuntu-latest ランナーにプリインストールされている。
-      # ⚠ 対象はディレクトリの列挙ではなく拡張子で決める（ファイルが増えても追随が要らない）。
+      # shellcheck はランナーにプリインストールされている。対象は拡張子で決める（ファイルが増えても追随が要らない）。
       - name: Script Check (shellcheck)
         run: |
           shellcheck --version
@@ -34,8 +33,7 @@ jobs:
           fi
           echo "=== shellcheck OK ==="
 
-      # gh をスタブに差し替えて走る（ネットワーク・トークン不要）。
-      # ⚠ 対象はファイルの列挙ではなくパターンで決める（テストが増えても追随が要らない）。
+      # gh をスタブに差し替えて走る（ネットワーク・トークン不要）。対象はパターンで決める（テストが増えても追随が要らない）。
       - name: Script Check (regression tests)
         if: ${{ !cancelled() }}
         run: |
