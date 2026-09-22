@@ -13,7 +13,7 @@
 
 | 種類              | 置き場                         | 呼び出し方                                                   |
 | ----------------- | ------------------------------ | ------------------------------------------------------------ |
-| reusable workflow | `.github/workflows/<name>.yml` | job の `uses:`（⚠ step からは呼べない）                      |
+| reusable workflow | `.github/workflows/<name>.yml` | job の `uses:`（step からは呼べない）                        |
 | composite action  | `.github/actions/<name>/`      | step の `uses:`（呼び出し元の job 構成を変えずに差し込める） |
 | レビュー観点      | `perspectives/<name>.md`       | reusable workflow の `profile`                               |
 
@@ -104,7 +104,7 @@ repository secret に登録する（リポジトリ管理者の作業）。
 このリポジトリに追加する。**存在しないプロファイルを指定した場合はそのファイルが無視され、
 レビュー本文の `未解決:` にその旨が書かれる**（job は失敗しない。run のログには `::warning` が出る）。
 
-⚠ **一方、常に読まれる `perspectives/common.md` が checkout 先に無い場合は、Claude を呼ばずに
+**一方、常に読まれる `perspectives/common.md` が checkout 先に無い場合は、Claude を呼ばずに
 run を失敗させる**（fail-close）。観点を読めないままレビューが進むのを防ぐため。
 
 ## 判定行の契約
@@ -121,7 +121,7 @@ run を失敗させる**（fail-close）。観点を読めないままレビュ�
 この形を探し、`判定: APPROVE` で、かつ PR の head SHA がレビュー時点から動いていないときだけ Approve を押す。
 形式の詳細は [`perspectives/common.md`](perspectives/common.md)「レビュー結果の定型フォーマット」が SSOT。
 
-⚠ **同じ形式を人間や他の bot が投稿しても Approve は付かない**（投稿者を `github-actions[bot]` に固定しているため）。
+**同じ形式を人間や他の bot が投稿しても Approve は付かない**（投稿者を `github-actions[bot]` に固定しているため）。
 これがこの仕組みの要で、回帰テスト（`tests/approve-if-verdict.test.sh`）が固定している。
 
 ## `.trillion-game-actions/` の改竄検査
@@ -136,7 +136,7 @@ git -C .trillion-game-actions status --porcelain --untracked-files=all
 で**追跡ファイルの変更と未追跡ファイルの追加を検査し**、出力があれば Approve を押さずに run を失敗させる（fail-close）。
 Claude に `Write` を許しているため、新規ファイルの追加も検査対象にする（`git diff` は未追跡ファイルを見ない）。
 
-⚠ **checkout の ref は `main` 固定**。呼び出し元の PR が観点や Approve スクリプトを差し替えてから
+**checkout の ref は `main` 固定**。呼び出し元の PR が観点や Approve スクリプトを差し替えてから
 自分をレビューさせる経路を作らないため、PR で `perspectives/` を変更しても、その PR 自身のレビューには反映されない
 （`main` にマージされてから効く）。
 
@@ -163,21 +163,21 @@ composite action。どれも無く、override ラベルも付いていなけれ�
     # override-label: override:no-issue  # 既定値。別名にするときだけ書く
 ```
 
-| input            | 必須 | 何を渡すか                                                                                 |
-| ---------------- | ---- | ------------------------------------------------------------------------------------------ |
-| `pr-body`        | ✓    | `github.event.pull_request.body`                                                           |
-| `labels-json`    | ✓    | `toJSON(github.event.pull_request.labels.*.name)`（⚠ JSON 配列。カンマ連結の文字列は不可） |
-| `override-label` |      | 検査をスキップするラベル名（既定 `override:no-issue`）                                     |
+| input            | 必須 | 何を渡すか                                                                               |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------- |
+| `pr-body`        | ✓    | `github.event.pull_request.body`                                                         |
+| `labels-json`    | ✓    | `toJSON(github.event.pull_request.labels.*.name)`（JSON 配列。カンマ連結の文字列は不可） |
+| `override-label` |      | 検査をスキップするラベル名（既定 `override:no-issue`）                                   |
 
 - **`Refs #N` も受理する**（Issue を閉じないシリーズ途中の PR のため）
 - **キーワードの直前は行頭か、英字以外の文字であること。** `prefixes #3` / `encloses #5` のように
   英単語の末尾へ部分一致した形は受理しない（受理すると、脚注番号などの `#数字` だけで検査を通過できてしまう）。
-  ⚠ **この境界の代償**として、`対応はFixes #3` のように**日本語が直接続く形は受理しない**
+  **この境界の代償**として、`対応はFixes #3` のように**日本語が直接続く形は受理しない**
   （UTF-8 ロケールでは日本語が `[[:alpha:]]` に入る）。キーワードの前に空白を置くこと
 - **番号の直後には境界を置かない。** `Refs #123の続き` のように日本語が続く形を受理するためで、
   代償として `Closes #12abc` のような形も受理する
 - **スキップはラベル名の完全一致でだけ効く。** 前後に語を足しただけの似た名前のラベルではスキップしない
-  （⚠ ラベル名をカンマ連結した文字列への部分一致にしないこと。`jq` の比較なので**大文字小文字も区別する**）
+  （ラベル名をカンマ連結した文字列への部分一致にしないこと。`jq` の比較なので**大文字小文字も区別する**）
 - **入力を解釈できないときはスキップしない**（fail-close）。`labels-json` が JSON 配列として読めなければ
   警告を出したうえで検査を実行する
 - 判定の実体は [`.github/actions/issue-link-check/check.sh`](.github/actions/issue-link-check/check.sh) にある。
@@ -185,7 +185,7 @@ composite action。どれも無く、override ラベルも付いていなけれ�
 - **`jq` を使う。** ランナーに入っているかは
   [actions/runner-images の Ubuntu readme](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)
   の Installed Software で測る。`check.sh` は冒頭で `jq --version` をログに出すので、実際のランナーでの有無は run のログで分かる。
-  ⚠ **`jq` が無くても本文の検査は動く**（`jq` を使うのはラベル検査だけ）。無い場合は**ラベルによるスキップだけを諦める**（fail-close）
+  **`jq` が無くても本文の検査は動く**（`jq` を使うのはラベル検査だけ）。無い場合は**ラベルによるスキップだけを諦める**（fail-close）
 - 呼び出し元の `on.pull_request.types` に `edited`（本文の修正）と `labeled` / `unlabeled`（ラベルの付け外し）が
   無いと、本文やラベルを直しても再走しない
 
@@ -218,5 +218,5 @@ for t in tests/*.test.sh; do bash "$t" || break; done
 npx prettier@3 --check .
 ```
 
-⚠ **CI（`ci.yml`）の回帰テストのステップも `tests/*.test.sh` を全件実行する**ので、対象は手元と同じ。
+**CI（`ci.yml`）の回帰テストのステップも `tests/*.test.sh` を全件実行する**ので、対象は手元と同じ。
 ただし上の `for` は 1 本目の失敗で止まる（`break`）のに対し、**CI は落ちても最後まで走らせてから失敗させる**。

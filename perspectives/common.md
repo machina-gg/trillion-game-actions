@@ -66,7 +66,7 @@
 - `指摘:` は `<ファイル:行>` から始め、末尾に `— 根拠` を付ける。指摘なしの場合は `なし`
 - `未解決:` は人間の判断が必要な事項。なければ `なし`
 
-⚠ **このフォーマットは Approve スクリプト（`scripts/approve-if-verdict.sh`）の契約である。**
+**このフォーマットは Approve スクリプト（`scripts/approve-if-verdict.sh`）の契約である。**
 機械が読むのは**コードブロックの外にある行頭 `## レビュー` の見出し**（括弧の中身は見ない）と、
 **同じくコードブロックの外にある行頭 `判定:` 行がちょうど 1 本**あることの 2 つで、
 どちらかの形を外すと判定が読まれず Approve が付かなくなる。
@@ -95,7 +95,7 @@ gh pr comment <PR番号> --body-file <一時ディレクトリ配下に作った
 - **ローカルでの実行**: PR 作成者とレビュー実行者が同一の GitHub アカウントの場合、
   `gh pr review --approve` は GitHub の仕様（"Pull request authors cannot approve their own pull requests."
   [GitHub Docs](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/reviewing-proposed-changes-in-a-pull-request)）
-  により通らない。**試行しない**。⚠ **この場合の判定行は Approve には数えられない**
+  により通らない。**試行しない**。**この場合の判定行は Approve には数えられない**
   （`approve-if-verdict.sh` は `github-actions[bot]` の投稿しか読まない）
 - Approve の有無は UI の「Reviewers」欄ではなく
   `gh api repos/<owner>/<repo>/pulls/<PR番号>/reviews --paginate --jq '.[].state'` で測る
