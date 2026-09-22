@@ -26,7 +26,9 @@ if [[ -z "${PR_BODY+x}" ]]; then
   exit 1
 fi
 
-if printf '%s\n' "$PR_BODY" | grep -qiE "$ISSUE_LINK_PATTERN"; then
+# 本文は here-string で渡す。パイプに戻すと、`grep -q` が一致した時点で終了した後に書き手が残りを
+# 書こうとして EPIPE になり、`pipefail` で「一致したのに非 0」になる（長い本文でだけ落ちる）。
+if grep -qiE "$ISSUE_LINK_PATTERN" <<<"$PR_BODY"; then
   echo "=== Issue 紐づけチェック OK ==="
   exit 0
 fi
